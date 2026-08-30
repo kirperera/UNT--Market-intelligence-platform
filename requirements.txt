@@ -1,0 +1,9 @@
+pandas
+requests
+scikit-learn
+statsmodels
+prophet
+psycopg2-binary
+SQLAlchemy
+APScheduler
+pytest
