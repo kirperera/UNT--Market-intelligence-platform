@@ -6,7 +6,7 @@
 *   **Pipeline Execution Time:** The end-to-end ETL process (Extraction, Validation, Transformation, Load) should complete within 60 minutes to allow ample time for retries in case of transient failures.
 
 ## 2. Database Performance Benchmarks
-*   **Query Response Time:** Analytical queries powering the Power BI dashboard (aggregating daily market summaries and forecasting views) must return results within 3-5 seconds.
+*   **Query Response Time:** Analytical queries powering the Tableau dashboard (aggregating daily market summaries and forecasting views) must return results within 3-5 seconds.
 *   **Concurrency:** The database should comfortably support up to 10 concurrent read connections from the BI layer without noticeable performance degradation.
 *   **Index Utilization:** Time-series retrieval operations must hit composite B-Tree indexes on `(trade_date, security_id)` to optimize range-scan performance.
 
