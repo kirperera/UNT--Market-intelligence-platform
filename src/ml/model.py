@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
+import json
+import os
 from prophet import Prophet
+from prophet.serialize import model_to_json, model_from_json
 from sklearn.metrics import mean_absolute_percentage_error, root_mean_squared_error
 from src.utils.logger import get_logger
 
@@ -71,3 +74,16 @@ class PriceForecaster:
         
         logger.info(f"Model Evaluation Results - MAPE: {mape:.4f} ({mape*100:.2f}%), RMSE: {rmse:.4f}")
         return {"mape": mape, "rmse": rmse}
+
+    def save_model(self, filepath: str):
+        """Serializes the trained Prophet model to a JSON file."""
+        logger.info(f"Saving model artifact to {filepath}")
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w') as fout:
+            json.dump(model_to_json(self.model), fout)
+            
+    def load_model(self, filepath: str):
+        """Loads a serialized Prophet model from a JSON file."""
+        logger.info(f"Loading model artifact from {filepath}")
+        with open(filepath, 'r') as fin:
+            self.model = model_from_json(json.load(fin))

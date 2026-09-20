@@ -124,7 +124,9 @@ class PostgresLoader:
         if valid_df.empty: return
         
         valid_df['security_id'] = valid_df['ticker'].map(sec_map)
-        valid_df['model_version'] = model_version
+        if 'model_version' not in valid_df.columns:
+            valid_df['model_version'] = model_version
+            
         valid_df['date_only'] = pd.to_datetime(valid_df['target_date']).dt.date
         
         query = """

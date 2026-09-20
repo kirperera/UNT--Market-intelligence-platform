@@ -40,24 +40,58 @@ def run_daily_batch():
         loader.upsert_macro_indicator(cbsl_macro_df)
         loader.upsert_daily_price(enriched_market_df)
         
-        # Phase 5: Machine Learning Forecasting Engine
+        # Phase 5: Machine Learning Forecasting Engine (Inference & Retraining Cadence)
         logger.info("Initializing Machine Learning Forecasting Engine...")
         from src.ml.model import PriceForecaster
+        import time
+        import pandas as pd
         
         all_forecasts = []
         tickers = enriched_market_df['ticker'].unique()
+        models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src/ml/models'))
+        
+        # Define Retraining Cadence: Retrain on Fridays (weekday = 4)
+        today = datetime.date.today()
+        is_retrain_day = today.weekday() == 4
         
         for ticker in tickers:
-            ticker_df = enriched_market_df[enriched_market_df['ticker'] == ticker].copy()
+            query = f"""
+                SELECT f.trade_date as trade_date_ms, f.close_price as close, m.usd_lkr_spot, m.sdfr
+                FROM fact_daily_price f
+                JOIN dim_security d ON f.security_id = d.security_id
+                LEFT JOIN fact_macro_indicator m ON f.trade_date = m.record_date
+                WHERE d.ticker_symbol = '{ticker}'
+                ORDER BY f.trade_date ASC
+            """
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', UserWarning)
+                with loader._get_connection() as conn:
+                    ticker_df = pd.read_sql_query(query, conn)
+                    
             if len(ticker_df) < 5: 
+                logger.warning(f"[{ticker}] Not enough history. Skipping ML.")
                 continue # Skip if not enough history
                 
-            # Train the Prophet model
+            model_path = os.path.join(models_dir, f"{ticker}_prophet.json")
             forecaster = PriceForecaster(include_macro=True)
-            forecaster.train(ticker_df, date_col='trade_date_ms', target_col='close')
+            
+            # Training vs Inference Logic
+            if is_retrain_day or not os.path.exists(model_path):
+                logger.info(f"[{ticker}] Retraining triggered (Cadence day or missing model).")
+                forecaster.train(ticker_df, date_col='trade_date_ms', target_col='close')
+                forecaster.save_model(model_path)
+                dynamic_version = f"Prophet_v{today.strftime('%Y%m%d')}"
+            else:
+                logger.info(f"[{ticker}] Loading existing model for daily inference.")
+                forecaster.load_model(model_path)
+                # Derive version from the file modification timestamp
+                mtime = os.path.getmtime(model_path)
+                mod_date = datetime.datetime.fromtimestamp(mtime)
+                dynamic_version = f"Prophet_v{mod_date.strftime('%Y%m%d')}"
             
             # Generate 30 days of future dates
-            last_date = pd.to_datetime(ticker_df['trade_date_ms'], unit='ms', origin='unix').max()
+            last_date = pd.to_datetime(ticker_df['trade_date_ms']).max()
             future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=30)
             future_df = pd.DataFrame({'ds': future_dates})
             
@@ -68,11 +102,12 @@ def run_daily_batch():
             # Predict and append
             forecast_res = forecaster.generate_forecast(future_df)
             forecast_res['ticker'] = ticker
+            forecast_res['model_version'] = dynamic_version
             all_forecasts.append(forecast_res)
 
         if all_forecasts:
             master_forecast_df = pd.concat(all_forecasts, ignore_index=True)
-            loader.upsert_price_forecast(master_forecast_df, model_version='Prophet_v1')
+            loader.upsert_price_forecast(master_forecast_df)
         
         # 4. Export to CSV (for Tableau Public compatibility)
         from src.etl.csv_exporter import CSVExporter
