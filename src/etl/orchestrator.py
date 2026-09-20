@@ -39,6 +39,11 @@ def run_daily_batch():
         loader.upsert_security_metadata(sec_meta_df)
         # Note: Further upsert methods (e.g., upsert_daily_price) would be called here.
         
+        # 4. Export to CSV (for Tableau Public compatibility)
+        from src.etl.csv_exporter import CSVExporter
+        exporter = CSVExporter()
+        exporter.export_views()
+        
         logger.info("ETL batch completed successfully.")
         
     except Exception as e:
