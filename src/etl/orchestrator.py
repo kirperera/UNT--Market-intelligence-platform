@@ -37,7 +37,8 @@ def run_daily_batch():
         # 3. Load
         loader = PostgresLoader()
         loader.upsert_security_metadata(sec_meta_df)
-        # Note: Further upsert methods (e.g., upsert_daily_price) would be called here.
+        loader.upsert_macro_indicator(cbsl_macro_df)
+        loader.upsert_daily_price(enriched_market_df)
         
         # 4. Export to CSV (for Tableau Public compatibility)
         from src.etl.csv_exporter import CSVExporter
