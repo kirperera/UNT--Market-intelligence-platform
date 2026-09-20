@@ -40,6 +40,40 @@ def run_daily_batch():
         loader.upsert_macro_indicator(cbsl_macro_df)
         loader.upsert_daily_price(enriched_market_df)
         
+        # Phase 5: Machine Learning Forecasting Engine
+        logger.info("Initializing Machine Learning Forecasting Engine...")
+        from src.ml.model import PriceForecaster
+        
+        all_forecasts = []
+        tickers = enriched_market_df['ticker'].unique()
+        
+        for ticker in tickers:
+            ticker_df = enriched_market_df[enriched_market_df['ticker'] == ticker].copy()
+            if len(ticker_df) < 5: 
+                continue # Skip if not enough history
+                
+            # Train the Prophet model
+            forecaster = PriceForecaster(include_macro=True)
+            forecaster.train(ticker_df, date_col='trade_date_ms', target_col='close')
+            
+            # Generate 30 days of future dates
+            last_date = pd.to_datetime(ticker_df['trade_date_ms'], unit='ms', origin='unix').max()
+            future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=30)
+            future_df = pd.DataFrame({'ds': future_dates})
+            
+            # Carry forward last known macro values for prediction
+            future_df['usd_lkr_spot'] = ticker_df['usd_lkr_spot'].iloc[-1]
+            future_df['sdfr'] = ticker_df['sdfr'].iloc[-1]
+            
+            # Predict and append
+            forecast_res = forecaster.generate_forecast(future_df)
+            forecast_res['ticker'] = ticker
+            all_forecasts.append(forecast_res)
+
+        if all_forecasts:
+            master_forecast_df = pd.concat(all_forecasts, ignore_index=True)
+            loader.upsert_price_forecast(master_forecast_df, model_version='Prophet_v1')
+        
         # 4. Export to CSV (for Tableau Public compatibility)
         from src.etl.csv_exporter import CSVExporter
         exporter = CSVExporter()

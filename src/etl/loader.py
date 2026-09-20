@@ -114,3 +114,35 @@ class PostgresLoader:
         except Exception as e:
             logger.error(f"Failed to upsert fact_macro_indicator: {e}")
             raise
+
+    def upsert_price_forecast(self, df: pd.DataFrame, model_version: str = 'Prophet_v1'):
+        """Idempotent insert into the fact_price_forecast table."""
+        if df.empty: return
+        
+        sec_map = self._get_security_map()
+        valid_df = df[df['ticker'].isin(sec_map.keys())].copy()
+        if valid_df.empty: return
+        
+        valid_df['security_id'] = valid_df['ticker'].map(sec_map)
+        valid_df['model_version'] = model_version
+        valid_df['date_only'] = pd.to_datetime(valid_df['target_date']).dt.date
+        
+        query = """
+            INSERT INTO fact_price_forecast (target_date, security_id, predicted_close, lower_bound, upper_bound, model_version)
+            VALUES %s
+            ON CONFLICT (target_date, security_id) DO UPDATE 
+            SET predicted_close = EXCLUDED.predicted_close,
+                lower_bound = EXCLUDED.lower_bound,
+                upper_bound = EXCLUDED.upper_bound,
+                model_version = EXCLUDED.model_version;
+        """
+        records = valid_df[['date_only', 'security_id', 'predicted_close', 'lower_bound', 'upper_bound', 'model_version']].values.tolist()
+        
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    execute_values(cursor, query, records)
+                    logger.info(f"Successfully upserted {len(records)} records into fact_price_forecast.")
+        except Exception as e:
+            logger.error(f"Failed to upsert fact_price_forecast: {e}")
+            raise
