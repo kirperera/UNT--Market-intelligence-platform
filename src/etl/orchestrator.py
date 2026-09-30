@@ -43,6 +43,7 @@ def run_daily_batch():
         # Phase 5: Machine Learning Forecasting Engine (Inference & Retraining Cadence)
         logger.info("Initializing Machine Learning Forecasting Engine...")
         from src.ml.model import PriceForecaster
+        from src.ml.features import FeatureEngineer
         import time
         import pandas as pd
         
@@ -73,12 +74,50 @@ def run_daily_batch():
                 logger.warning(f"[{ticker}] Not enough history. Skipping ML.")
                 continue # Skip if not enough history
                 
+            # Apply Feature Engineering (Technical Indicators)
+            ticker_df = FeatureEngineer.generate_technical_indicators(ticker_df)
+            # Drop the initial rows that have NaN values due to the 30-day/90-day rolling windows
+            ticker_df = ticker_df.dropna().reset_index(drop=True)
+            
+            # If after dropping NaNs we don't have enough data, skip
+            if len(ticker_df) < 5:
+                logger.warning(f"[{ticker}] Not enough history after feature engineering. Skipping ML.")
+                continue
+                
             model_path = os.path.join(models_dir, f"{ticker}_prophet.json")
             forecaster = PriceForecaster(include_macro=True)
             
             # Training vs Inference Logic
             if is_retrain_day or not os.path.exists(model_path):
                 logger.info(f"[{ticker}] Retraining triggered (Cadence day or missing model).")
+                
+                # --- Task 5.6: Model Evaluation (Hold-out Validation) ---
+                # Ensure we have enough data (e.g., 90 days) to hold out 30 days for testing
+                if len(ticker_df) > 90:
+                    logger.info(f"[{ticker}] Performing 30-day hold-out validation...")
+                    train_set = ticker_df.iloc[:-30].copy()
+                    test_set = ticker_df.iloc[-30:].copy()
+                    
+                    eval_forecaster = PriceForecaster(include_macro=True)
+                    eval_forecaster.train(train_set, date_col='trade_date_ms', target_col='close')
+                    
+                    # Prepare future df for the test set using actual regressors
+                    eval_future = test_set.rename(columns={'trade_date_ms': 'ds'}).copy()
+                    
+                    # Forecast the hold-out period
+                    eval_res = eval_forecaster.generate_forecast(eval_future)
+                    
+                    # Quantify accuracy
+                    metrics = PriceForecaster.evaluate(
+                        actual=test_set['close'].reset_index(drop=True), 
+                        predicted=eval_res['predicted_close'].reset_index(drop=True)
+                    )
+                    logger.info(f"[{ticker}] Validation metrics - MAPE: {metrics['mape']:.4f}, RMSE: {metrics['rmse']:.4f}")
+                else:
+                    logger.warning(f"[{ticker}] Insufficient history for 30-day validation. Skipping evaluation.")
+                
+                # Train the final production model on the FULL dataset
+                logger.info(f"[{ticker}] Training final production model on full dataset...")
                 forecaster.train(ticker_df, date_col='trade_date_ms', target_col='close')
                 forecaster.save_model(model_path)
                 dynamic_version = f"Prophet_v{today.strftime('%Y%m%d')}"
@@ -95,9 +134,14 @@ def run_daily_batch():
             future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=30)
             future_df = pd.DataFrame({'ds': future_dates})
             
-            # Carry forward last known macro values for prediction
-            future_df['usd_lkr_spot'] = ticker_df['usd_lkr_spot'].iloc[-1]
-            future_df['sdfr'] = ticker_df['sdfr'].iloc[-1]
+            # Carry forward last known macro and technical values for prediction
+            last_row = ticker_df.iloc[-1]
+            future_df['usd_lkr_spot'] = last_row['usd_lkr_spot']
+            future_df['sdfr'] = last_row['sdfr']
+            future_df['sma_30'] = last_row['sma_30']
+            future_df['sma_90'] = last_row['sma_90']
+            future_df['volatility_30d'] = last_row['volatility_30d']
+            future_df['momentum_10d'] = last_row['momentum_10d']
             
             # Predict and append
             forecast_res = forecaster.generate_forecast(future_df)

@@ -21,6 +21,12 @@ class PriceForecaster:
             # Adding macroeconomic variables as exogenous regressors
             self.model.add_regressor('usd_lkr_spot')
             self.model.add_regressor('sdfr')
+            
+            # Adding technical indicator features
+            self.model.add_regressor('sma_30')
+            self.model.add_regressor('sma_90')
+            self.model.add_regressor('volatility_30d')
+            self.model.add_regressor('momentum_10d')
 
     def train(self, df: pd.DataFrame, date_col: str = 'trade_date_ms', target_col: str = 'close'):
         """Trains the Prophet model on historical data."""
@@ -32,7 +38,10 @@ class PriceForecaster:
         # Drop rows where target or regressors are NaN
         cols_to_check = ['ds', 'y']
         if self.include_macro:
-            cols_to_check.extend(['usd_lkr_spot', 'sdfr'])
+            cols_to_check.extend([
+                'usd_lkr_spot', 'sdfr', 
+                'sma_30', 'sma_90', 'volatility_30d', 'momentum_10d'
+            ])
         train_df = train_df.dropna(subset=cols_to_check)
 
         logger.info("Training the forecasting model...")
