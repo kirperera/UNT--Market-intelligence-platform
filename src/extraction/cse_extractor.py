@@ -25,8 +25,9 @@ class CSEExtractor:
         self.target_symbols = ["JKH.N0000", "COMB.N0000", "LOLC.N0000"]
 
     def fetch_security_metadata(self) -> pd.DataFrame:
-        """Retrieves ticker metadata iteratively from companyInfoSummery."""
-        url = f"{self.BASE_URL}/companyInfoSummery"
+        """Retrieves ticker metadata and sector iteratively."""
+        info_url = f"{self.BASE_URL}/companyInfoSummery"
+        profile_url = f"{self.BASE_URL}/companyProfile"
         data = []
         
         logger.info(f"Fetching live security metadata for {len(self.target_symbols)} symbols...")
@@ -34,16 +35,26 @@ class CSEExtractor:
         for symbol in self.target_symbols:
             try:
                 payload = {"symbol": symbol}
-                response = self.session.post(url, data=payload, timeout=10)
+                # Fetch Name & Ticker
+                response = self.session.post(info_url, data=payload, timeout=10)
                 response.raise_for_status()
                 json_resp = response.json()
+                
+                # Fetch Sector
+                profile_resp = self.session.post(profile_url, data=payload, timeout=10)
+                profile_resp.raise_for_status()
+                prof_json = profile_resp.json()
+                
+                sector_name = "Unknown"
+                if "reqComSumInfo" in prof_json and len(prof_json["reqComSumInfo"]) > 0:
+                    sector_name = prof_json["reqComSumInfo"][0].get("sector", "Unknown")
                 
                 if "reqSymbolInfo" in json_resp:
                     info = json_resp["reqSymbolInfo"]
                     data.append({
                         "ticker": info.get("symbol"),
                         "name": info.get("name"),
-                        "sector": "Unknown" # Endpoint does not provide Sector
+                        "sector": sector_name
                     })
                 
                 # Sleep briefly to be polite and avoid rate limiting
@@ -57,7 +68,7 @@ class CSEExtractor:
         return cleanse_and_validate(df, schema)
 
     def fetch_daily_summary(self, trade_date: str) -> pd.DataFrame:
-        """Retrieves live closing prices from companyInfoSummery."""
+        """Retrieves live closing prices and traded volumes."""
         url = f"{self.BASE_URL}/companyInfoSummery"
         data = []
         
@@ -80,7 +91,7 @@ class CSEExtractor:
                         "ticker": info.get("symbol"),
                         "trade_date_ms": timestamp_ms,
                         "close": info.get("lastTradedPrice"),
-                        "volume": 0 # Endpoint does not provide VolumeTraded
+                        "volume": info.get("tdyShareVolume", 0)
                     })
                     
                 time.sleep(0.5)
