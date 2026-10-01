@@ -10,7 +10,7 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 class CSVExporter:
-    """Exports analytical views from PostgreSQL to CSV files for Tableau Public."""
+    """Exports analytical views from PostgreSQL to CSV files for any BI or data visualization tool."""
     
     def __init__(self):
         config = configparser.ConfigParser()
@@ -29,7 +29,7 @@ class CSVExporter:
         os.makedirs(self.export_dir, exist_ok=True)
 
     def export_views(self):
-        logger.info("Exporting analytical views to CSV for Tableau Public...")
+        logger.info("Exporting analytical views to CSV for BI dashboards...")
         try:
             with psycopg2.connect(**self.conn_params) as conn:
                 # Export daily market summary

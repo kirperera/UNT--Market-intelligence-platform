@@ -7,7 +7,7 @@ This project establishes a fully automated Extract, Transform, Load (ETL) pipeli
 ## 1. System Architecture & Prerequisites
 *   **Language:** Python 3.11+
 *   **Database:** PostgreSQL 16+
-*   **BI Tool:** Tableau Public (via CSV flat-file integration)
+*   **BI Tool:** Platform-agnostic (Power BI, Tableau, Looker Studio, etc., via CSV flat-file integration)
 *   **Core Libraries:** `pandas`, `requests`, `prophet`, `pdfplumber`, `apscheduler`
 
 ---
@@ -63,8 +63,6 @@ python src/etl/orchestrator.py --run-now
 ### 3.3. ML Model Retraining Cadence
 The `PriceForecaster` model evaluates its own drift and automatically triggers a retraining cycle every **Friday**. No manual intervention is required. It holds out the last 30 days to validate MAPE/RMSE accuracy before deploying the new JSON model to `src/ml/models/`.
 
-### 3.4. Tableau Dashboard Refresh
+### 3.4. BI Dashboard Refresh
 The orchestrator automatically outputs flattened CSV views to `dashboard/data/`.
-1. Open the `.twb` file in Tableau Desktop.
-2. Navigate to **Data > Refresh All Extracts**.
-3. (Optional) Publish the refreshed workbook to Tableau Public.
+Simply point your preferred Business Intelligence tool (Tableau, Power BI, Looker Studio, Qlik) to these CSV files and trigger a local data refresh to view the latest analytics without requiring direct database access.

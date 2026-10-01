@@ -153,7 +153,7 @@ def run_daily_batch():
             master_forecast_df = pd.concat(all_forecasts, ignore_index=True)
             loader.upsert_price_forecast(master_forecast_df)
         
-        # 4. Export to CSV (for Tableau Public compatibility)
+        # 4. Export to CSV (for BI tool compatibility)
         from src.etl.csv_exporter import CSVExporter
         exporter = CSVExporter()
         exporter.export_views()
