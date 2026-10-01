@@ -7,3 +7,4 @@ psycopg2-binary
 SQLAlchemy
 APScheduler
 pytest
+pdfplumber==0.11.0
